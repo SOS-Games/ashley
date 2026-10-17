@@ -1,46 +1,112 @@
-![](http://i.imgur.com/w8oAC73.png?1)
+# Ashley (SOS-Games fork)
 
-[![GitHub Actions build status](https://img.shields.io/github/workflow/status/libgdx/ashley/Compile%20and%20publish%20snapshot)](https://github.com/libgdx/ashley/actions/workflows/publish_snapshot.yml)
+This is a small fork of [Ashley](https://github.com/libgdx/ashley) **1.7.4**, the libGDX entity framework, made for
+`jvm-dungeon-crawler`. The API is the same as upstream Ashley, with three changes:
 
-[![Sonatype Nexus (Releases)](https://img.shields.io/nexus/r/com.badlogicgames.ashley/ashley?nexusVersion=2&server=https%3A%2F%2Foss.sonatype.org&label=release)](https://search.maven.org/artifact/com.badlogicgames.ashley/ashley)
-[![Sonatype Nexus (Snapshots)](https://img.shields.io/nexus/s/com.badlogicgames.ashley/ashley?server=https%3A%2F%2Foss.sonatype.org&label=snapshot)](https://oss.sonatype.org/#nexus-search;gav~com.badlogicgames.ashley~ashley)
+| | Stock Ashley 1.7.4 | This fork |
+|---|---|---|
+| Holding on to another entity | Store the `Entity` object. Once it is removed, `PooledEngine` can recycle it as an unrelated entity. | `long ref = e.ref()`, then `engine.resolve(ref)` returns `null` once that entity is gone, even if the object or slot was reused. |
+| Iteration order | Swap-remove: removing an entity moves the last one into its place. | Sorted by slot index for `getEntities()` and every family. Freed slots are reused first in, first out. |
+| `addSystem` with a class already present | Replaces the old system. | Both instances are kept and both run. `getSystem(Class)` returns the first. |
 
+See [CHANGES.md](CHANGES.md) for the exact list of changes. Coordinates: `io.github.sosgames:ashley:1.7.4-sos.1`.
+Requirements: Java 17 or newer, libGDX core 1.14.0 (pulled in transitively).
 
-A tiny entity framework written in Java. It's inspired by frameworks like
-[Ash](http://www.ashframework.org/) (hence the name) and
-[Artemis](http://gamadu.com/artemis/). Ashley tries to be a high-performance
-entity framework  without the use of black-magic and thus making the API easy
-and transparent to use.
+## Using refs
 
-Ashley is awesome, if you don't believe it, check out some [games](https://github.com/libgdx/ashley/wiki/Games-made-with-Ashley) made with it!
+```java
+// In a component: store refs, never Entity objects.
+public class Follower implements Component {
+    public long leader = EntityRef.NONE;
+}
 
-Ashley lives under the [libGDX](https://github.com/libgdx) family but it does not force you to use that specific framework if you do not wish to do so.
+follower.leader = leaderEntity.ref();             // valid right away, even if addEntity() was delayed
 
-libGDX Discord : [![Discord Chat](https://img.shields.io/discord/348229412858101762?logo=discord)](https://libgdx.com/community/discord/)
+Entity leader = engine.resolve(follower.leader);  // null if the leader was removed
+if (leader == null) follower.leader = EntityRef.NONE;
+```
 
-### Get started
+Rules:
 
-* [Use Ashley in your project](https://github.com/libgdx/ashley/wiki/Getting-started-with-Ashley)
-* [Read the wiki](https://github.com/libgdx/ashley/wiki)
-* [Refer to the javadocs](https://javadoc.io/doc/com.badlogicgames.ashley/ashley)
-* [Read the examples](https://github.com/libgdx/ashley/tree/master/tests)
+* Refs are assigned when `engine.addEntity(e)` is called, even while the engine is updating.
+* Refs are invalidated **before** `EntityListener.entityRemoved` runs. Removal listeners can still read the entity's
+  components, but `resolve(oldRef)` is already `null`.
+* `EntityRef.NONE` (`0L`) is the "no entity" value. `EntityRef.toString(ref)` gives `#index@generation` for logs.
+* `src/test/java/com/badlogic/ashley/lint/ComponentEntityFieldTest.java` fails the build if any component has an
+  `Entity`-typed field. Copy it into your game's tests to enforce the same rule there.
 
+## Building
 
-### News and community
+```bash
+./gradlew build                 # compile, run all tests, build jars (Windows: gradlew.bat build)
+./gradlew test                  # tests only
+./gradlew publishToMavenLocal   # install io.github.sosgames:ashley:1.7.4-sos.1 into ~/.m2
+```
 
-Stay up to date in Ashley matters by following [@d_saltares](https://twitter.com/d_saltares) and reading [saltares.com](http://saltares.com). Check the [libGDX](https://libgdx.com/) blog as well for additional updates.
+Any JDK 17+ can run the build (it compiles with `--release 17`). The Gradle wrapper (8.14.3) downloads itself on
+first run. Tests run with `--add-opens java.base/java.lang=ALL-UNNAMED`, which Mockito 1.10 needs on modern JDKs.
 
-### Report issues
+## Consuming it from jvm-dungeon-crawler
 
-Something not working quite as expected? Do you need a feature that has not been implemented yet? Check the [issue tracker](https://github.com/libgdx/ashley/issues) and add a new one if your problem is not already listed. Please try to provide a detailed description of your problem, including the steps to reproduce it.
+### Option A: composite build (recommended while the fork is evolving)
 
-### Contribute
+Clone this repo next to the game (for example `../ashley-fork`), then in the game's `settings.gradle`:
 
-Awesome! If you would like to contribute with a new feature or submit a bugfix, fork this repo and send a pull request. Please, make sure all the [unit tests](https://github.com/libgdx/ashley/tree/master/ashley/tests/com/badlogic/ashley) are passing before submitting and add new ones in case you introduced new features.
+```groovy
+includeBuild('../ashley-fork')
+```
 
-### License
+and in the module that uses it:
 
-Ashley is licensed under the [Apache 2 License](https://github.com/libgdx/ashley/blob/master/LICENSE), meaning you
-can use it free of charge, without strings attached in commercial and non-commercial projects. We love to
-get (non-mandatory) credit in case you release a game or app using Ashley!
+```groovy
+dependencies {
+    api 'io.github.sosgames:ashley:1.7.4-sos.1'
+}
+```
 
+Gradle swaps the dependency for the included build automatically, so edits to the fork are picked up without
+publishing. Remove any `com.badlogicgames.ashley:ashley` dependency so the classes aren't on the classpath twice.
+
+### Option B: JitPack
+
+After pushing to GitHub, create a tag (`git tag v1.7.4-sos.1` then `git push origin v1.7.4-sos.1`) and use:
+
+```groovy
+repositories { maven { url 'https://jitpack.io' } }
+dependencies { api 'com.github.SOS-Games:ashley-fork:v1.7.4-sos.1' }
+```
+
+`jitpack.yml` builds with OpenJDK 21. On JitPack the build publishes under JitPack's coordinates. This setup hasn't
+been tried on jitpack.io yet, so if the first build fails, check the build log at `https://jitpack.io/#SOS-Games/ashley-fork`.
+
+### Option C: mavenLocal
+
+Run `./gradlew publishToMavenLocal` here, add `mavenLocal()` to the game's repositories, and depend on
+`io.github.sosgames:ashley:1.7.4-sos.1`.
+
+### Option D: copy it in as an `:ecs` module
+
+1. Copy `src/`, `LICENSE`, `NOTICE` and `CHANGES.md` into `jvm-dungeon-crawler/ecs/`.
+2. In the game's `settings.gradle`, add `include 'ecs'`.
+3. Create `ecs/build.gradle`:
+
+   ```groovy
+   plugins { id 'java-library' }
+   dependencies {
+       api "com.badlogicgames.gdx:gdx:$gdxVersion"
+       testImplementation 'junit:junit:4.13.2'
+       testImplementation 'org.mockito:mockito-core:1.10.19'
+   }
+   tasks.withType(JavaCompile).configureEach { options.release = 17 }
+   test { jvmArgs '--add-opens', 'java.base/java.lang=ALL-UNNAMED' }
+   ```
+
+4. Depend on it with `api project(':ecs')`.
+
+Keep `LICENSE` and `NOTICE` with the module, and keep the `Modified by SOS-Games` headers.
+
+## License
+
+Ashley is Apache License 2.0 (see [LICENSE](LICENSE) and [NOTICE](NOTICE)): Copyright 2013 Stefan Bachmann and the
+contributors listed in [AUTHORS](AUTHORS). The SOS-Games modifications are also Apache-2.0. Apache-2.0 code can be
+combined into a GPL-3.0 game, as long as this module's `LICENSE` and `NOTICE` are shipped and credited.

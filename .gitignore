@@ -1,35 +1,23 @@
-# Temporary Files
-*~
-.*.swp
-.DS_STORE
-*.mdb
-# per project ignores, it's cumbersome, but reduces the risk of missing something
-
 # Gradle
-.gradle
+.gradle/
 build/
-dist/
+!gradle/wrapper/gradle-wrapper.jar
 
-# Intellij
+# IDEs
 .idea/
+*.iml
 *.ipr
 *.iws
-*.iml
 out/
-com_crashlytics_export_strings.xml
-
-# Eclipse
 .classpath
 .project
-.metadata
-**/bin/
-tmp/
-*.tmp
-*.bak
-*.swp
-*~.nib
-local.properties
 .settings/
-.loadpath
-.externalToolBuilders/
-*.launch
+bin/
+.vscode/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*~
+*.swp
+local.properties

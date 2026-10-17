@@ -1,2 +1,1 @@
-include 'ashley', 'tests', 'benchmarks'
-
+rootProject.name = 'ashley'
